@@ -14,7 +14,7 @@ static const char *TAG = "ESP32S3_ECM_V1";
 
 const char *app_get_version(void)
 {
-    return "V1.2.1";
+    return "V1.2.2";
 }
 
 void app_main(void)

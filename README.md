@@ -1,23 +1,27 @@
-﻿# ESP32S3_ECM_V1 (V1.2.1)
+﻿# ESP32S3_ECM_V1 (V1.2.2)
 
 基于 ESP32-S3 + EC200A 的 4G 转 Wi-Fi 最小路由器，使用 ECM（Ethernet Control Model）模式上行。
 
 ## 项目信息
 
-- 项目版本：V1.2.1
+- 项目版本：V1.2.2
 - 目标芯片：ESP32-S3 (QFN56, 240MHz, 8MB PSRAM)
 - 4G 模组：Quectel EC200A-CN
 - 工作模式：ECM (Ethernet Control Model) + SoftAP + NAPT
 
-## V1.2.1 优化内容
+## V1.2.2 优化内容（相比 V1.2.1）
 
-比 V1.2 增加以下优化：
+- 内存管理优化：AT 状态快照缓冲区从栈分配改为 static 复用，节省 640B 栈压力
+- app_state 接口细化：新增 is_softap_started / get_sta_count 细粒度 getter，避免全量快照拷贝
+- 双核负载优化：lwIP TCPIP 任务显式绑定 Core 1，Core 0 专注 Wi-Fi/USB/ECM 实时路径
+
+## V1.2.1 优化内容（相比 V1.2）
 
 - FreeRTOS 调度优化：稳定态 AT 轮询从 500ms 降至 5s，减少 USB CDC 带宽占用和功耗
 - Suspend 安全加固：用任务通知替代 busy-wait 循环，消除长期 suspend 时的 WDT 风险
 - 启用 PSRAM：板载 8MB Octal PSRAM 加入堆分配器，释放内部 DRAM 给时敏路径
 - 编译优化：Debug (-Og) 切换为 Release (-Os)，固件体积缩减约 20%
-- 任务管理：显式定义栈大小宏（APP_TASK_STACK_CELLULAR_MANAGER / APP_TASK_STACK_POWER_MANAGER）
+- 任务管理：显式定义栈大小宏
 
 ## 功能概览
 
@@ -62,11 +66,11 @@ main/
   power_manager.c/.h  # 温控与休眠管理
 ```
 
-## 版本
+## 版本历史
 
-V1.2.1 - 2026-06-12
-- FreeRTOS 调度优化、PSRAM 启用、编译优化
-
-V1.2 - 2026-06-12
-- ECM 最小闭环稳定运行，NAPT 透明上网验证通过
-- 新增温控保护与空闲休眠
+| 版本 | 日期 | 说明 |
+|---|---|---|
+| V1.2.2 | 2026-06-12 | 内存管理优化、lwIP Core 1 绑定 |
+| V1.2.1 | 2026-06-12 | FreeRTOS 调度优化、PSRAM 启用、-Os 编译 |
+| V1.2 | 2026-06-12 | ECM 最小闭环、温控保护、空闲休眠 |
+| V1.1 | 2026-06-10 | ECM 最小路由基线 |

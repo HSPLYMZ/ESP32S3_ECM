@@ -55,17 +55,17 @@ static bool read_internal_temperature(float *temp_celsius)
     return temperature_sensor_get_celsius(s_temp_sensor, temp_celsius) == ESP_OK;
 }
 
-static bool idle_sleep_allowed(const app_state_snapshot_t *snapshot, const cellular_status_t *status)
+static bool idle_sleep_allowed(const cellular_status_t *status)
 {
-    if (snapshot == NULL || status == NULL) {
+    if (status == NULL) {
         return false;
     }
 
-    if (!snapshot->softap_started) {
+    if (!app_state_is_softap_started()) {
         return false;
     }
 
-    if (snapshot->connected_sta_count != 0) {
+    if (app_state_get_sta_count() != 0) {
         return false;
     }
 
@@ -175,7 +175,7 @@ static void power_manager_task(void *arg)
 
     while (true) {
         float temp_celsius = 0.0f;
-        app_state_snapshot_t snapshot;
+        
         cellular_status_t status;
         int64_t now_us = esp_timer_get_time();
         bool temp_ok = read_internal_temperature(&temp_celsius);
@@ -184,7 +184,7 @@ static void power_manager_task(void *arg)
             app_state_set_internal_temp_celsius(temp_celsius);
         }
 
-        app_state_get_snapshot(&snapshot);
+        
         cellular_ecm_get_status(&status);
 
         if (temp_ok && temp_celsius >= POWER_THERMAL_WARN_C) {
@@ -221,7 +221,7 @@ static void power_manager_task(void *arg)
             continue;
         }
 
-        if (idle_sleep_allowed(&snapshot, &status)) {
+        if (idle_sleep_allowed(&status)) {
             if (idle_since_us == 0) {
                 idle_since_us = now_us;
                 ESP_LOGI(TAG, "Idle timer started");

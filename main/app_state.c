@@ -2,7 +2,7 @@
 
  * ESP32S3_ECM_V1 运行状态实现
 
- * 当前版本：V1.2.1
+ * 当前版本：V1.2.2
 
  * 说明：提供线程安全的共享状态读写。
 
@@ -195,6 +195,24 @@ void app_state_set_internal_temp_celsius(float internal_temp_celsius)
 }
 
 
+
+bool app_state_is_softap_started(void)
+{
+    bool result;
+    app_state_lock();
+    result = s_state.softap_started;
+    app_state_unlock();
+    return result;
+}
+
+uint8_t app_state_get_sta_count(void)
+{
+    uint8_t result;
+    app_state_lock();
+    result = s_state.connected_sta_count;
+    app_state_unlock();
+    return result;
+}
 
 void app_state_get_snapshot(app_state_snapshot_t *snapshot)
 
