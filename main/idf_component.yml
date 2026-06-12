@@ -1,0 +1,5 @@
+dependencies:
+  espressif/usb: "^1.0.0"
+  espressif/iot_usbh_cdc: "^3.0"
+  espressif/iot_usbh_ecm: "^0.2.1"
+  idf: ">=6.0"
