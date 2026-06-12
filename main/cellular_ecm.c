@@ -2,7 +2,7 @@
 
  * ESP32S3_ECM_V1 - EC200A ECM ????
 
- * ?????V1.2.2
+ * ?????V1.2.3
 
  * ???EC200A USB CDC/ECM ???? AT ????ECM ???DNS ???NAPT????????
 
@@ -43,6 +43,7 @@
 #include "freertos/event_groups.h"
 
 #include "freertos/portmacro.h"
+#include "freertos/semphr.h"
 
 #include "freertos/task.h"
 
@@ -162,7 +163,7 @@ static app_config_t s_runtime_config = { 0 };
 
 static cellular_status_t s_status = { 0 };
 
-static portMUX_TYPE s_status_lock = portMUX_INITIALIZER_UNLOCKED;
+static SemaphoreHandle_t s_status_mutex = NULL;
 
 static bool s_cdc_driver_ready = false;
 
@@ -175,6 +176,10 @@ static bool s_runtime_stopping = false;
 static volatile bool s_suspend_requested = false;
 
 static volatile uint8_t s_usb_dev_addr = 0;
+
+/* ================================================================
+ * SECTION: Internal Helpers (suspend check, status get/set, NAPT, DNS)
+ * ================================================================ */
 
 
 
@@ -218,7 +223,7 @@ static void status_set_defaults(void)
 
 {
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     memset(&s_status, 0, sizeof(s_status));
 
@@ -237,7 +242,7 @@ static void status_set_defaults(void)
     status_set_text_field(s_status.module_model, sizeof(s_status.module_model), "EC200A");
 
     status_set_text_field(s_status.last_error, sizeof(s_status.last_error), "?? EC200A ??");
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
@@ -247,7 +252,7 @@ static void status_set_usb_connected(bool connected)
 
 {
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     s_status.usb_connected = connected;
 
@@ -273,7 +278,7 @@ static void status_set_usb_connected(bool connected)
 
     }
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
@@ -283,11 +288,11 @@ static void status_set_at_ready(bool ready)
 
 {
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     s_status.at_ready = ready;
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
@@ -297,7 +302,7 @@ static void status_set_uplink_connected(bool connected)
 
 {
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     s_status.uplink_connected = connected;
 
@@ -311,7 +316,7 @@ static void status_set_uplink_connected(bool connected)
 
     }
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
@@ -321,11 +326,11 @@ static void status_set_reconnect_pending(bool pending)
 
 {
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     s_status.reconnect_pending = pending;
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
@@ -335,11 +340,11 @@ static void status_set_dial_status(const char *value)
 
 {
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     status_set_text_field(s_status.dial_status, sizeof(s_status.dial_status), value);
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
@@ -349,11 +354,11 @@ static void status_set_last_error(const char *value)
 
 {
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     status_set_text_field(s_status.last_error, sizeof(s_status.last_error), value);
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
@@ -363,13 +368,13 @@ static void status_set_ip_dns(const char *ip, const char *dns)
 
 {
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     strlcpy(s_status.uplink_ip, ip != NULL ? ip : "", sizeof(s_status.uplink_ip));
 
     strlcpy(s_status.dns, dns != NULL ? dns : "", sizeof(s_status.dns));
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
@@ -379,11 +384,11 @@ static void status_set_sim_status(const char *value)
 
 {
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     status_set_text_field(s_status.sim_status, sizeof(s_status.sim_status), value);
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
@@ -393,11 +398,11 @@ static void status_set_signal_csq(const char *value)
 
 {
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     status_set_text_field(s_status.signal_csq, sizeof(s_status.signal_csq), value);
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
@@ -407,11 +412,11 @@ static void status_set_cereg_status(const char *value)
 
 {
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     status_set_text_field(s_status.cereg_status, sizeof(s_status.cereg_status), value);
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
@@ -421,11 +426,11 @@ static void status_set_network_info(const char *value)
 
 {
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     status_set_text_field(s_status.network_info, sizeof(s_status.network_info), value);
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
@@ -447,11 +452,11 @@ static esp_err_t enable_softap_napt(void)
 
     esp_err_t err = esp_netif_napt_enable(s_ap_netif);
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     s_status.napt_enabled = (err == ESP_OK);
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 
 
@@ -558,6 +563,10 @@ static esp_err_t update_softap_dns_offer(const char *dns)
 }
 
 
+
+/* ================================================================
+ * SECTION: AT Communication Layer (port I/O, command/response, parser)
+ * ================================================================ */
 
 static void compact_spaces(char *text)
 
@@ -1212,6 +1221,10 @@ static void close_at_port(void)
 
 
 
+/* ================================================================
+ * SECTION: ECM Driver Lifecycle (create, destroy, wait, event handlers)
+ * ================================================================ */
+
 static void clear_runtime_events(void)
 
 {
@@ -1737,6 +1750,10 @@ static esp_err_t cellular_ecm_install_cdc_driver(void)
 
 
 
+/* ================================================================
+ * SECTION: ECM State Machine (bringup, teardown, suspend, manager task)
+ * ================================================================ */
+
 static esp_err_t bringup_once(void)
 
 {
@@ -2048,6 +2065,10 @@ static void cellular_ecm_manager_task(void *arg)
 
 
 
+/* ================================================================
+ * SECTION: Public API
+ * ================================================================ */
+
 esp_err_t cellular_ecm_start(esp_netif_t *ap_netif)
 
 {
@@ -2055,6 +2076,13 @@ esp_err_t cellular_ecm_start(esp_netif_t *ap_netif)
     BaseType_t task_ok;
 
 
+
+    
+    /* V1.2.3: Create mutex before any status_* call */
+    if (s_status_mutex == NULL) {
+        s_status_mutex = xSemaphoreCreateMutex();
+        ESP_RETURN_ON_FALSE(s_status_mutex != NULL, ESP_ERR_NO_MEM, TAG, "Failed to create status mutex");
+    }
 
     s_ap_netif = ap_netif;
 
@@ -2093,6 +2121,10 @@ esp_err_t cellular_ecm_start(esp_netif_t *ap_netif)
                         TAG,
 
                         "Failed to register ETH GOT IP handler");
+
+    /* Create status mutex before any callbacks can fire */
+    s_status_mutex = xSemaphoreCreateMutex();
+    ESP_RETURN_ON_FALSE(s_status_mutex != NULL, ESP_ERR_NO_MEM, TAG, "Failed to create status mutex");
 
     ESP_RETURN_ON_ERROR(cellular_ecm_install_cdc_driver(), TAG, "Failed to initialize USBH CDC base");
 
@@ -2142,11 +2174,11 @@ void cellular_ecm_get_status(cellular_status_t *status)
 
 
 
-    portENTER_CRITICAL(&s_status_lock);
+    xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     *status = s_status;
 
-    portEXIT_CRITICAL(&s_status_lock);
+    xSemaphoreGive(s_status_mutex);
 
 }
 
