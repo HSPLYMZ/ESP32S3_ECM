@@ -1,7 +1,4 @@
-﻿/*
- * ESP32S3_ECM_V1 鍚姩鍏ュ彛
- * 褰撳墠鐗堟湰锛歏1.1
- * 璇存槑锛氫粎璐熻矗鏈€灏?ECM 璺敱闂幆鐨勫垵濮嬪寲缂栨帓銆? */
+/* Main entry for the minimal ECM router. */
 
 #include "app_config.h"
 #include "app_state.h"
@@ -14,7 +11,7 @@ static const char *TAG = "ESP32S3_ECM_V1";
 
 const char *app_get_version(void)
 {
-    return "V1.2.3";
+    return "V1.2.4";
 }
 
 void app_main(void)
@@ -22,7 +19,7 @@ void app_main(void)
     app_config_t config;
     esp_err_t err;
 
-        ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "========================================");
     ESP_LOGI(TAG, "  ESP32S3_ECM_V1 4G-to-WiFi Router");
     ESP_LOGI(TAG, "  Version: %s", app_get_version());
     ESP_LOGI(TAG, "  Chip: ESP32-S3, 8MB PSRAM, 16MB Flash");
@@ -39,6 +36,7 @@ void app_main(void)
     ESP_ERROR_CHECK(wifi_ap_apply_config(&config));
     ESP_ERROR_CHECK(cellular_ecm_start(wifi_ap_get_ap_netif()));
     ESP_ERROR_CHECK(cellular_ecm_apply_config(&config));
+
     err = power_manager_start();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Power manager disabled: %s", esp_err_to_name(err));

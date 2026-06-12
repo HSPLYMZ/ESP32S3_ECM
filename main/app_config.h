@@ -1,8 +1,4 @@
-/*
- * ESP32S3_ECM_V1 配置定义
- * 当前版本：V1.2.3
- * 说明：定义 SoftAP 与 APN 的配置结构、默认值和接口。
- */
+/* SoftAP and APN configuration definitions. */
 
 #pragma once
 

@@ -1,8 +1,4 @@
-/*
- * ESP32S3_ECM_V1 SoftAP 实现
- * 当前版本：V1.2.3
- * 说明：提供最小路由版本所需的 SoftAP 启动、配置和 DNS 下发逻辑。
- */
+/* SoftAP startup and DHCP DNS helpers. */
 
 #include "wifi_ap.h"
 
@@ -17,6 +13,7 @@
 
 static const char *TAG = "wifi_ap";
 static const esp_ip4_addr_t s_default_dns = { .addr = ESP_IP4TOADDR(223, 5, 5, 5) };
+static uint8_t s_dhcps_offer_dns = 0x02;
 
 static bool s_wifi_stack_initialized = false;
 static esp_netif_t *s_ap_netif = NULL;
@@ -78,7 +75,6 @@ static esp_err_t wifi_ap_apply_internal(const app_config_t *config)
 {
     wifi_config_t wifi_ap_config;
     uint8_t actual_channel = config->channel;
-    uint8_t offer_dns = 1;
     esp_err_t err;
 
     err = esp_wifi_stop();
@@ -94,8 +90,8 @@ static esp_err_t wifi_ap_apply_internal(const app_config_t *config)
     ESP_ERROR_CHECK(esp_netif_dhcps_option(s_ap_netif,
                                            ESP_NETIF_OP_SET,
                                            ESP_NETIF_DOMAIN_NAME_SERVER,
-                                           &offer_dns,
-                                           sizeof(offer_dns)));
+                                           &s_dhcps_offer_dns,
+                                           sizeof(s_dhcps_offer_dns)));
     ESP_ERROR_CHECK(esp_wifi_start());
     ESP_ERROR_CHECK(wifi_ap_set_dns_server(&s_default_dns));
 
@@ -139,6 +135,7 @@ esp_err_t wifi_ap_apply_config(const app_config_t *config)
 esp_err_t wifi_ap_suspend(void)
 {
     esp_err_t err = esp_wifi_stop();
+
     if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED) {
         return err;
     }

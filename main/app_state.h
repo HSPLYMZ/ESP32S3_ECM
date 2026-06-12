@@ -1,8 +1,4 @@
-﻿/*
- * ESP32S3_ECM_V1 杩愯鐘舵€佸畾涔?
- * 褰撳墠鐗堟湰锛歏1.2.2.1
- * ?????V1.2.3
- */
+/* Shared runtime state snapshot. */
 
 #pragma once
 

@@ -1,8 +1,4 @@
-﻿/*
- * ESP32S3_ECM_V1 ECM 涓婅鎺ュ彛
- * 褰撳墠鐗堟湰锛歏1.2
- * ?????V1.2.3
- */
+/* EC200A ECM uplink interface. */
 
 #pragma once
 

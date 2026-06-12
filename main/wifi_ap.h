@@ -1,8 +1,4 @@
-/*
- * ESP32S3_ECM_V1 SoftAP 接口
- * 当前版本：V1.2.3
- * 说明：提供 SoftAP 初始化、配置应用和 DNS 下发接口。
- */
+/* SoftAP control interface. */
 
 #pragma once
 

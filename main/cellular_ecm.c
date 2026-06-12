@@ -229,7 +229,7 @@ static void status_set_defaults(void)
 
     s_status.uplink_mode = CELLULAR_UPLINK_MODE_ECM;
 
-    status_set_text_field(s_status.dial_status, sizeof(s_status.dial_status), "绛夊緟 ECM USB 璁惧");
+    status_set_text_field(s_status.dial_status, sizeof(s_status.dial_status), "Waiting for ECM USB device");
 
     status_set_text_field(s_status.sim_status, sizeof(s_status.sim_status), "--");
 
@@ -241,7 +241,7 @@ static void status_set_defaults(void)
 
     status_set_text_field(s_status.module_model, sizeof(s_status.module_model), "EC200A");
 
-    status_set_text_field(s_status.last_error, sizeof(s_status.last_error), "?? EC200A ??");
+    status_set_text_field(s_status.last_error, sizeof(s_status.last_error), "Waiting for EC200A");
     xSemaphoreGive(s_status_mutex);
 
 }
@@ -977,7 +977,7 @@ static void update_radio_status_snapshot(void)
 
     } else {
 
-        status_set_sim_status("璇诲彇澶辫触");
+        status_set_sim_status("Read failed");
 
     }
 
@@ -991,7 +991,7 @@ static void update_radio_status_snapshot(void)
 
     } else {
 
-        status_set_signal_csq("璇诲彇澶辫触");
+        status_set_signal_csq("Read failed");
 
     }
 
@@ -1005,7 +1005,7 @@ static void update_radio_status_snapshot(void)
 
     } else {
 
-        status_set_cereg_status("璇诲彇澶辫触");
+        status_set_cereg_status("Read failed");
 
     }
 
@@ -1019,7 +1019,7 @@ static void update_radio_status_snapshot(void)
 
     } else {
 
-        status_set_network_info("璇诲彇澶辫触");
+        status_set_network_info("Read failed");
 
     }
 
@@ -1109,7 +1109,7 @@ static void at_port_closed_cb(usbh_cdc_port_handle_t port_handle, void *user_dat
 
     status_set_uplink_connected(false);
 
-    status_set_dial_status("AT 鎺у埗鍙ｅ凡鏂紑");
+    status_set_dial_status("AT control closed");
 
     status_set_last_error("EC200A AT control interface disconnected.");
 
@@ -1263,6 +1263,15 @@ static void destroy_ecm_stack(void)
 
     clear_runtime_events();
 
+    if (s_eth_handle != NULL) {
+        (void)iot_eth_update_input_path(s_eth_handle, NULL, NULL);
+    }
+
+    if (s_netif_glue != NULL) {
+        (void)iot_eth_del_netif_glue(s_netif_glue);
+        s_netif_glue = NULL;
+    }
+
 
 
     if (s_eth_handle != NULL) {
@@ -1278,8 +1287,6 @@ static void destroy_ecm_stack(void)
 
 
     s_ecm_driver = NULL;
-
-    s_netif_glue = NULL;
 
 
 
@@ -1331,6 +1338,8 @@ static esp_err_t create_ecm_stack(void)
 
     if (err != ESP_OK) {
 
+        s_ecm_driver = NULL;
+
         return err;
 
     }
@@ -1356,26 +1365,40 @@ static esp_err_t create_ecm_stack(void)
     };
 
     s_ecm_netif = esp_netif_new(&netif_cfg);
-
-    ESP_RETURN_ON_FALSE(s_ecm_netif != NULL, ESP_ERR_NO_MEM, TAG, "Failed to create ECM netif");
+    if (s_ecm_netif == NULL) {
+        err = ESP_ERR_NO_MEM;
+        goto err_cleanup;
+    }
 
 
 
     s_netif_glue = iot_eth_new_netif_glue(s_eth_handle);
+    if (s_netif_glue == NULL) {
+        err = ESP_ERR_NO_MEM;
+        goto err_cleanup;
+    }
 
-    ESP_RETURN_ON_FALSE(s_netif_glue != NULL, ESP_ERR_NO_MEM, TAG, "Failed to create ECM glue");
 
 
+    err = esp_netif_attach(s_ecm_netif, s_netif_glue);
+    if (err != ESP_OK) {
+        goto err_cleanup;
+    }
 
-    ESP_RETURN_ON_ERROR(esp_netif_attach(s_ecm_netif, s_netif_glue), TAG, "Failed to attach ECM netif");
-
-    ESP_RETURN_ON_ERROR(iot_eth_start(s_eth_handle), TAG, "Failed to start ECM eth");
+    err = iot_eth_start(s_eth_handle);
+    if (err != ESP_OK) {
+        goto err_cleanup;
+    }
 
 
 
     s_ecm_started = true;
 
     return ESP_OK;
+
+err_cleanup:
+    destroy_ecm_stack();
+    return err;
 
 }
 
@@ -1481,7 +1504,7 @@ static void cellular_ecm_usb_event_cb(usbh_cdc_device_event_t event,
 
         status_set_usb_connected(true);
 
-        status_set_dial_status("妫€娴嬪埌 EC200A锛岀瓑???ECM/AT 閾捐矾寤虹珛");
+        status_set_dial_status("EC200A detected, waiting for ECM/AT");
 
         status_set_last_error("");
 
@@ -1503,7 +1526,7 @@ static void cellular_ecm_usb_event_cb(usbh_cdc_device_event_t event,
 
         status_set_uplink_connected(false);
 
-        status_set_dial_status("EC200A USB 宸叉柇寮€");
+        status_set_dial_status("EC200A USB disconnected");
 
         status_set_last_error("EC200A USB device disconnected.");
 
@@ -1533,7 +1556,7 @@ static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, i
 
         case IOT_ETH_EVENT_START:
 
-            status_set_dial_status("ECM ?????");
+            status_set_dial_status("ECM starting");
             status_set_last_error("");
 
             ESP_LOGI(TAG, "IOT_ETH_EVENT_START");
@@ -1552,7 +1575,7 @@ static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, i
 
             status_set_reconnect_pending(false);
 
-            status_set_dial_status("ECM ?????");
+            status_set_dial_status("ECM link up");
             status_set_last_error("");
 
             ESP_LOGI(TAG, "IOT_ETH_EVENT_CONNECTED");
@@ -1567,7 +1590,7 @@ static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, i
 
             s_ip_acquired = false;
 
-            status_set_dial_status("ECM 閾捐矾宸叉柇寮€");
+            status_set_dial_status("ECM link down");
 
             status_set_last_error("ECM uplink disconnected.");
 
@@ -1589,7 +1612,7 @@ static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, i
 
             s_ip_acquired = false;
 
-            status_set_dial_status("ECM ?????");
+            status_set_dial_status("ECM stopped");
             ESP_LOGI(TAG, "IOT_ETH_EVENT_STOP");
 
             break;
@@ -1642,7 +1665,7 @@ static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, i
 
         status_set_uplink_connected(true);
 
-        status_set_dial_status("ECM 宸茶幏???IP");
+        status_set_dial_status("ECM got IP");
 
         status_set_last_error("");
 
@@ -1764,7 +1787,7 @@ static esp_err_t bringup_once(void)
 
     if (!s_ecm_started) {
 
-        status_set_dial_status("鍚姩 ECM 椹卞姩");
+        status_set_dial_status("Starting ECM stack");
 
         err = create_ecm_stack();
 
@@ -1780,7 +1803,7 @@ static esp_err_t bringup_once(void)
 
 
 
-    status_set_dial_status("绛夊緟 EC200A USB 鏋氫妇");
+    status_set_dial_status("Waiting for EC200A USB");
 
     err = wait_for_ecm_usb_ready(15000);
 
@@ -1794,7 +1817,7 @@ static esp_err_t bringup_once(void)
 
 
 
-    status_set_dial_status("?? AT ???");
+    status_set_dial_status("Opening AT port");
     err = open_at_port();
 
     if (err != ESP_OK) {
@@ -1807,7 +1830,7 @@ static esp_err_t bringup_once(void)
 
 
 
-    status_set_dial_status("寤虹珛 AT 閾捐矾");
+    status_set_dial_status("Handshaking AT");
 
     err = ensure_at_ready();
 
@@ -1823,7 +1846,7 @@ static esp_err_t bringup_once(void)
 
     status_set_at_ready(true);
 
-    status_set_dial_status("閰嶇疆 EC200A ECM 妯″紡");
+    status_set_dial_status("Configuring ECM mode");
 
     err = configure_modem_for_ecm();
 
@@ -1841,7 +1864,7 @@ static esp_err_t bringup_once(void)
 
 
 
-    status_set_dial_status("绛夊緟 ECM 鑾峰彇 IP");
+    status_set_dial_status("Waiting for ECM IP");
 
     err = wait_for_ecm_ip(ECM_IP_WAIT_TIMEOUT_MS);
 
@@ -1968,7 +1991,7 @@ static void cellular_ecm_manager_task(void *arg)
 
             teardown_runtime();
 
-            status_set_dial_status("ECM ?????????");
+            status_set_dial_status("ECM bring-up failed");
             status_set_reconnect_pending(true);
 
             vTaskDelay(pdMS_TO_TICKS(ECM_START_RETRY_DELAY_MS));
@@ -2053,7 +2076,7 @@ static void cellular_ecm_manager_task(void *arg)
 
         status_set_reconnect_pending(true);
 
-        status_set_dial_status("姝ｅ湪閲嶅缓 ECM 閾捐矾");
+        status_set_dial_status("Rebuilding ECM link");
 
         teardown_runtime();
 
@@ -2078,7 +2101,7 @@ esp_err_t cellular_ecm_start(esp_netif_t *ap_netif)
 
 
     
-    /* V1.2.3: Create mutex before any status_* call */
+    /* Create the mutex before any status_* call. */
     if (s_status_mutex == NULL) {
         s_status_mutex = xSemaphoreCreateMutex();
         ESP_RETURN_ON_FALSE(s_status_mutex != NULL, ESP_ERR_NO_MEM, TAG, "Failed to create status mutex");
@@ -2121,10 +2144,6 @@ esp_err_t cellular_ecm_start(esp_netif_t *ap_netif)
                         TAG,
 
                         "Failed to register ETH GOT IP handler");
-
-    /* Create status mutex before any callbacks can fire */
-    s_status_mutex = xSemaphoreCreateMutex();
-    ESP_RETURN_ON_FALSE(s_status_mutex != NULL, ESP_ERR_NO_MEM, TAG, "Failed to create status mutex");
 
     ESP_RETURN_ON_ERROR(cellular_ecm_install_cdc_driver(), TAG, "Failed to initialize USBH CDC base");
 
@@ -2198,7 +2217,7 @@ esp_err_t cellular_ecm_request_reconnect(void)
 
     status_set_reconnect_pending(true);
 
-    status_set_dial_status("宸茶???ECM 閲嶈繛");
+    status_set_dial_status("ECM reconnect requested");
 
     status_set_last_error("");
 
