@@ -1,8 +1,8 @@
-/*
+﻿/*
 
  * ESP32S3_ECM_V1 - EC200A ECM ????
 
- * ?????V1.2
+ * ?????V1.2.1
 
  * ???EC200A USB CDC/ECM ???? AT ????ECM ???DNS ???NAPT????????
 
@@ -224,7 +224,7 @@ static void status_set_defaults(void)
 
     s_status.uplink_mode = CELLULAR_UPLINK_MODE_ECM;
 
-    status_set_text_field(s_status.dial_status, sizeof(s_status.dial_status), "等待 ECM USB 设备");
+    status_set_text_field(s_status.dial_status, sizeof(s_status.dial_status), "绛夊緟 ECM USB 璁惧");
 
     status_set_text_field(s_status.sim_status, sizeof(s_status.sim_status), "--");
 
@@ -969,7 +969,7 @@ static void update_radio_status_snapshot(void)
 
     } else {
 
-        status_set_sim_status("读取失败");
+        status_set_sim_status("璇诲彇澶辫触");
 
     }
 
@@ -983,7 +983,7 @@ static void update_radio_status_snapshot(void)
 
     } else {
 
-        status_set_signal_csq("读取失败");
+        status_set_signal_csq("璇诲彇澶辫触");
 
     }
 
@@ -997,7 +997,7 @@ static void update_radio_status_snapshot(void)
 
     } else {
 
-        status_set_cereg_status("读取失败");
+        status_set_cereg_status("璇诲彇澶辫触");
 
     }
 
@@ -1011,7 +1011,7 @@ static void update_radio_status_snapshot(void)
 
     } else {
 
-        status_set_network_info("读取失败");
+        status_set_network_info("璇诲彇澶辫触");
 
     }
 
@@ -1101,7 +1101,7 @@ static void at_port_closed_cb(usbh_cdc_port_handle_t port_handle, void *user_dat
 
     status_set_uplink_connected(false);
 
-    status_set_dial_status("AT 控制口已断开");
+    status_set_dial_status("AT 鎺у埗鍙ｅ凡鏂紑");
 
     status_set_last_error("EC200A AT control interface disconnected.");
 
@@ -1469,7 +1469,7 @@ static void cellular_ecm_usb_event_cb(usbh_cdc_device_event_t event,
 
         status_set_usb_connected(true);
 
-        status_set_dial_status("检测到 EC200A，等???ECM/AT 链路建立");
+        status_set_dial_status("妫€娴嬪埌 EC200A锛岀瓑???ECM/AT 閾捐矾寤虹珛");
 
         status_set_last_error("");
 
@@ -1491,7 +1491,7 @@ static void cellular_ecm_usb_event_cb(usbh_cdc_device_event_t event,
 
         status_set_uplink_connected(false);
 
-        status_set_dial_status("EC200A USB 已断开");
+        status_set_dial_status("EC200A USB 宸叉柇寮€");
 
         status_set_last_error("EC200A USB device disconnected.");
 
@@ -1555,7 +1555,7 @@ static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, i
 
             s_ip_acquired = false;
 
-            status_set_dial_status("ECM 链路已断开");
+            status_set_dial_status("ECM 閾捐矾宸叉柇寮€");
 
             status_set_last_error("ECM uplink disconnected.");
 
@@ -1630,7 +1630,7 @@ static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, i
 
         status_set_uplink_connected(true);
 
-        status_set_dial_status("ECM 已获???IP");
+        status_set_dial_status("ECM 宸茶幏???IP");
 
         status_set_last_error("");
 
@@ -1748,7 +1748,7 @@ static esp_err_t bringup_once(void)
 
     if (!s_ecm_started) {
 
-        status_set_dial_status("启动 ECM 驱动");
+        status_set_dial_status("鍚姩 ECM 椹卞姩");
 
         err = create_ecm_stack();
 
@@ -1764,7 +1764,7 @@ static esp_err_t bringup_once(void)
 
 
 
-    status_set_dial_status("等待 EC200A USB 枚举");
+    status_set_dial_status("绛夊緟 EC200A USB 鏋氫妇");
 
     err = wait_for_ecm_usb_ready(15000);
 
@@ -1791,7 +1791,7 @@ static esp_err_t bringup_once(void)
 
 
 
-    status_set_dial_status("建立 AT 链路");
+    status_set_dial_status("寤虹珛 AT 閾捐矾");
 
     err = ensure_at_ready();
 
@@ -1807,7 +1807,7 @@ static esp_err_t bringup_once(void)
 
     status_set_at_ready(true);
 
-    status_set_dial_status("配置 EC200A ECM 模式");
+    status_set_dial_status("閰嶇疆 EC200A ECM 妯″紡");
 
     err = configure_modem_for_ecm();
 
@@ -1825,7 +1825,7 @@ static esp_err_t bringup_once(void)
 
 
 
-    status_set_dial_status("等待 ECM 获取 IP");
+    status_set_dial_status("绛夊緟 ECM 鑾峰彇 IP");
 
     err = wait_for_ecm_ip(ECM_IP_WAIT_TIMEOUT_MS);
 
@@ -1891,10 +1891,13 @@ static void enter_suspend_state(void)
 
 
 
-    while (suspend_requested()) {
-
-        vTaskDelay(pdMS_TO_TICKS(100));
-
+    /* Block on task notification instead of busy-waiting.
+     * cellular_ecm_resume() will send the notification to wake us. */
+    {
+        uint32_t notify_val = 0;
+        while (suspend_requested()) {
+            (void)xTaskNotifyWait(0x00, ULONG_MAX, &notify_val, pdMS_TO_TICKS(1000));
+        }
     }
 
 
@@ -1980,7 +1983,7 @@ static void cellular_ecm_manager_task(void *arg)
 
                                                    pdFALSE,
 
-                                                   pdMS_TO_TICKS(500));
+                                                   pdMS_TO_TICKS(APP_AT_STABLE_POLL_MS));
 
 
 
@@ -2034,7 +2037,7 @@ static void cellular_ecm_manager_task(void *arg)
 
         status_set_reconnect_pending(true);
 
-        status_set_dial_status("正在重建 ECM 链路");
+        status_set_dial_status("姝ｅ湪閲嶅缓 ECM 閾捐矾");
 
         teardown_runtime();
 
@@ -2108,7 +2111,7 @@ esp_err_t cellular_ecm_start(esp_netif_t *ap_netif)
 
                                       "cellular_ecm",
 
-                                      8192,
+                                      APP_TASK_STACK_CELLULAR_MANAGER,
 
                                       NULL,
 
@@ -2164,7 +2167,7 @@ esp_err_t cellular_ecm_request_reconnect(void)
 
     status_set_reconnect_pending(true);
 
-    status_set_dial_status("已请???ECM 重连");
+    status_set_dial_status("宸茶???ECM 閲嶈繛");
 
     status_set_last_error("");
 
@@ -2253,7 +2256,7 @@ esp_err_t cellular_ecm_resume(void)
 
 
     s_suspend_requested = false;
-
+    (void)xTaskNotifyGive(s_manager_task);
     return ESP_OK;
 
 }

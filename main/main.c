@@ -1,7 +1,7 @@
-/*
- * ESP32S3_ECM_V1 启动入口
- * 当前版本：V1.1
- * 说明：仅负责最�?ECM 路由闭环的初始化编排�? */
+﻿/*
+ * ESP32S3_ECM_V1 鍚姩鍏ュ彛
+ * 褰撳墠鐗堟湰锛歏1.1
+ * 璇存槑锛氫粎璐熻矗鏈€灏?ECM 璺敱闂幆鐨勫垵濮嬪寲缂栨帓銆? */
 
 #include "app_config.h"
 #include "app_state.h"
@@ -14,7 +14,7 @@ static const char *TAG = "ESP32S3_ECM_V1";
 
 const char *app_get_version(void)
 {
-    return "V1.2";
+    return "V1.2.1";
 }
 
 void app_main(void)

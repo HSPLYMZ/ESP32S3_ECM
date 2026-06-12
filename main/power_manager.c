@@ -256,7 +256,7 @@ esp_err_t power_manager_start(void)
 
     task_ok = xTaskCreatePinnedToCore(power_manager_task,
                                       "power_manager",
-                                      4096,
+                                      APP_TASK_STACK_POWER_MANAGER,
                                       NULL,
                                       APP_TASK_PRIO_POWER_MANAGER,
                                       &s_power_task,
