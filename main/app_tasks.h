@@ -15,4 +15,4 @@
 #define APP_TASK_STACK_POWER_MANAGER 4096
 
 /* Stable-state AT poll interval */
-#define APP_AT_STABLE_POLL_MS 5000
+#define APP_AT_STABLE_POLL_MS 4000

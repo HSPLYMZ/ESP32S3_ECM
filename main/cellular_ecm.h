@@ -34,6 +34,3 @@ esp_err_t cellular_ecm_start(esp_netif_t *ap_netif);
 void cellular_ecm_get_status(cellular_status_t *status);
 esp_err_t cellular_ecm_request_reconnect(void);
 esp_err_t cellular_ecm_apply_config(const app_config_t *config);
-esp_err_t cellular_ecm_suspend(uint32_t timeout_ms);
-esp_err_t cellular_ecm_resume(void);
-bool cellular_ecm_is_suspended(void);

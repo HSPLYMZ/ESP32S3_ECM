@@ -1,4 +1,4 @@
-﻿/*
+/*
 
  * ESP32S3_ECM_V1 - EC200A ECM ????
 
@@ -8,21 +8,13 @@
 
  */
 
-
-
 #include "cellular_ecm.h"
-
-
 
 #include <inttypes.h>
 
 #include <stdio.h>
 
-#include <stdlib.h>
-
 #include <string.h>
-
-
 
 #include "app_tasks.h"
 
@@ -46,6 +38,7 @@
 #include "freertos/semphr.h"
 
 #include "freertos/task.h"
+#include "esp_task_wdt.h"
 
 #include "iot_eth.h"
 
@@ -57,13 +50,9 @@
 
 #include "lwip/lwip_napt.h"
 
-
-
 #include "usb/usb_host.h"
 
 #include "wifi_ap.h"
-
-
 
 #define EC200A_USB_VID 0x2C7C
 
@@ -71,11 +60,7 @@
 
 #define EC200A_AT_INTERFACE 3
 
-
-
 #define DHCPS_OFFER_DNS 0x02
-
-
 
 #define AT_RX_BUFFER_SIZE 2048
 
@@ -93,7 +78,7 @@
 
 #define AT_READY_RETRY_COUNT 3
 
-#define CGATT_WAIT_RETRY_COUNT 20
+#define CGATT_WAIT_RETRY_COUNT 45
 
 #define CGATT_WAIT_INTERVAL_MS 1000
 
@@ -104,8 +89,6 @@
 #define ECM_RECONNECT_DELAY_MS 1500
 
 #define ECM_START_RETRY_DELAY_MS 2000
-
-
 
 #define ECM_REQ_RECONNECT BIT(0)
 
@@ -118,8 +101,6 @@
 #define ECM_RUNTIME_IP_UP   BIT(1)
 
 #define ECM_RUNTIME_SUSPENDED BIT(2)
-
-
 
 static const char *TAG = "cellular_ecm";
 
@@ -138,8 +119,6 @@ static const usb_device_match_id_t s_ecm_match_ids[] = {
     { 0 },
 
 };
-
-
 
 static esp_netif_t *s_ap_netif = NULL;
 
@@ -177,21 +156,10 @@ static volatile bool s_suspend_requested = false;
 
 static volatile uint8_t s_usb_dev_addr = 0;
 
+
 /* ================================================================
  * SECTION: Internal Helpers (suspend check, status get/set, NAPT, DNS)
  * ================================================================ */
-
-
-
-static bool suspend_requested(void)
-
-{
-
-    return s_suspend_requested;
-
-}
-
-
 
 static void status_set_text_field(char *field, size_t field_len, const char *value)
 
@@ -202,8 +170,6 @@ static void status_set_text_field(char *field, size_t field_len, const char *val
         return;
 
     }
-
-
 
     if (value == NULL || value[0] == '\0') {
 
@@ -216,8 +182,6 @@ static void status_set_text_field(char *field, size_t field_len, const char *val
     }
 
 }
-
-
 
 static void status_set_defaults(void)
 
@@ -245,8 +209,6 @@ static void status_set_defaults(void)
     xSemaphoreGive(s_status_mutex);
 
 }
-
-
 
 static void status_set_usb_connected(bool connected)
 
@@ -282,8 +244,6 @@ static void status_set_usb_connected(bool connected)
 
 }
 
-
-
 static void status_set_at_ready(bool ready)
 
 {
@@ -295,8 +255,6 @@ static void status_set_at_ready(bool ready)
     xSemaphoreGive(s_status_mutex);
 
 }
-
-
 
 static void status_set_uplink_connected(bool connected)
 
@@ -320,8 +278,6 @@ static void status_set_uplink_connected(bool connected)
 
 }
 
-
-
 static void status_set_reconnect_pending(bool pending)
 
 {
@@ -333,8 +289,6 @@ static void status_set_reconnect_pending(bool pending)
     xSemaphoreGive(s_status_mutex);
 
 }
-
-
 
 static void status_set_dial_status(const char *value)
 
@@ -348,8 +302,6 @@ static void status_set_dial_status(const char *value)
 
 }
 
-
-
 static void status_set_last_error(const char *value)
 
 {
@@ -361,8 +313,6 @@ static void status_set_last_error(const char *value)
     xSemaphoreGive(s_status_mutex);
 
 }
-
-
 
 static void status_set_ip_dns(const char *ip, const char *dns)
 
@@ -378,8 +328,6 @@ static void status_set_ip_dns(const char *ip, const char *dns)
 
 }
 
-
-
 static void status_set_sim_status(const char *value)
 
 {
@@ -391,8 +339,6 @@ static void status_set_sim_status(const char *value)
     xSemaphoreGive(s_status_mutex);
 
 }
-
-
 
 static void status_set_signal_csq(const char *value)
 
@@ -406,8 +352,6 @@ static void status_set_signal_csq(const char *value)
 
 }
 
-
-
 static void status_set_cereg_status(const char *value)
 
 {
@@ -419,8 +363,6 @@ static void status_set_cereg_status(const char *value)
     xSemaphoreGive(s_status_mutex);
 
 }
-
-
 
 static void status_set_network_info(const char *value)
 
@@ -434,8 +376,6 @@ static void status_set_network_info(const char *value)
 
 }
 
-
-
 static esp_err_t enable_softap_napt(void)
 
 {
@@ -448,8 +388,6 @@ static esp_err_t enable_softap_napt(void)
 
     }
 
-
-
     esp_err_t err = esp_netif_napt_enable(s_ap_netif);
 
     xSemaphoreTake(s_status_mutex, portMAX_DELAY);
@@ -457,8 +395,6 @@ static esp_err_t enable_softap_napt(void)
     s_status.napt_enabled = (err == ESP_OK);
 
     xSemaphoreGive(s_status_mutex);
-
-
 
     if (err == ESP_OK) {
 
@@ -480,8 +416,6 @@ static esp_err_t enable_softap_napt(void)
 
 }
 
-
-
 static esp_err_t update_softap_dns_offer(const char *dns)
 
 {
@@ -491,8 +425,6 @@ static esp_err_t update_softap_dns_offer(const char *dns)
         return ESP_ERR_INVALID_ARG;
 
     }
-
-
 
     esp_netif_dns_info_t ap_dns = { 0 };
 
@@ -504,8 +436,6 @@ static esp_err_t update_softap_dns_offer(const char *dns)
 
     }
 
-
-
     uint8_t dhcps_offer_option = DHCPS_OFFER_DNS;
 
     esp_err_t err = esp_netif_dhcps_stop(s_ap_netif);
@@ -515,8 +445,6 @@ static esp_err_t update_softap_dns_offer(const char *dns)
         return err;
 
     }
-
-
 
     err = esp_netif_dhcps_option(s_ap_netif,
 
@@ -536,8 +464,6 @@ static esp_err_t update_softap_dns_offer(const char *dns)
 
     }
 
-
-
     err = esp_netif_set_dns_info(s_ap_netif, ESP_NETIF_DNS_MAIN, &ap_dns);
 
     if (err != ESP_OK) {
@@ -547,8 +473,6 @@ static esp_err_t update_softap_dns_offer(const char *dns)
         return err;
 
     }
-
-
 
     err = esp_netif_dhcps_start(s_ap_netif);
 
@@ -561,7 +485,6 @@ static esp_err_t update_softap_dns_offer(const char *dns)
     return err;
 
 }
-
 
 
 /* ================================================================
@@ -578,15 +501,11 @@ static void compact_spaces(char *text)
 
     bool last_space = false;
 
-
-
     while (read_ptr != NULL && *read_ptr != '\0') {
 
         char current = *read_ptr++;
 
         bool is_space = (current == '\r' || current == '\n' || current == '\t' || current == ' ');
-
-
 
         if (is_space) {
 
@@ -608,8 +527,6 @@ static void compact_spaces(char *text)
 
     }
 
-
-
     if (write_ptr > text && write_ptr[-1] == ' ') {
 
         write_ptr--;
@@ -619,8 +536,6 @@ static void compact_spaces(char *text)
     *write_ptr = '\0';
 
 }
-
-
 
 static bool extract_prefixed_value(const char *response,
 
@@ -638,15 +553,11 @@ static bool extract_prefixed_value(const char *response,
 
     size_t copy_len = 0;
 
-
-
     if (begin == NULL || value == NULL || value_len == 0) {
 
         return false;
 
     }
-
-
 
     begin += strlen(prefix);
 
@@ -656,8 +567,6 @@ static bool extract_prefixed_value(const char *response,
 
     }
 
-
-
     end = strpbrk(begin, "\r\n");
 
     if (end == NULL) {
@@ -666,8 +575,6 @@ static bool extract_prefixed_value(const char *response,
 
     }
 
-
-
     copy_len = (size_t)(end - begin);
 
     if (copy_len >= value_len) {
@@ -675,8 +582,6 @@ static bool extract_prefixed_value(const char *response,
         copy_len = value_len - 1;
 
     }
-
-
 
     memcpy(value, begin, copy_len);
 
@@ -688,8 +593,6 @@ static bool extract_prefixed_value(const char *response,
 
 }
 
-
-
 static esp_err_t at_port_write_line(const char *command)
 
 {
@@ -699,8 +602,6 @@ static esp_err_t at_port_write_line(const char *command)
         return ESP_ERR_INVALID_STATE;
 
     }
-
-
 
     return usbh_cdc_write_bytes(s_at_port,
 
@@ -712,8 +613,6 @@ static esp_err_t at_port_write_line(const char *command)
 
 }
 
-
-
 static esp_err_t at_port_read_response(char *response, size_t response_len, uint32_t timeout_ms)
 
 {
@@ -722,29 +621,21 @@ static esp_err_t at_port_read_response(char *response, size_t response_len, uint
 
     size_t used = 0;
 
-
-
     if (response == NULL || response_len == 0) {
 
         return ESP_ERR_INVALID_ARG;
 
     }
 
-
-
     response[0] = '\0';
-
-
 
     while (esp_timer_get_time() < deadline_us) {
 
-        if (suspend_requested()) {
+        if (false) {
 
             return ESP_ERR_INVALID_STATE;
 
         }
-
-
 
         size_t available = 0;
 
@@ -756,8 +647,6 @@ static esp_err_t at_port_read_response(char *response, size_t response_len, uint
 
         }
 
-
-
         size_t chunk_len = available;
 
         uint8_t chunk[128];
@@ -768,8 +657,6 @@ static esp_err_t at_port_read_response(char *response, size_t response_len, uint
 
         }
 
-
-
         if (usbh_cdc_read_bytes(s_at_port, chunk, &chunk_len, 0) != ESP_OK || chunk_len == 0) {
 
             vTaskDelay(pdMS_TO_TICKS(20));
@@ -777,8 +664,6 @@ static esp_err_t at_port_read_response(char *response, size_t response_len, uint
             continue;
 
         }
-
-
 
         size_t copy = chunk_len;
 
@@ -798,8 +683,6 @@ static esp_err_t at_port_read_response(char *response, size_t response_len, uint
 
         }
 
-
-
         if (strstr(response, "\r\nOK\r\n") != NULL || strstr(response, "\r\nERROR\r\n") != NULL) {
 
             return ESP_OK;
@@ -808,13 +691,9 @@ static esp_err_t at_port_read_response(char *response, size_t response_len, uint
 
     }
 
-
-
     return ESP_ERR_TIMEOUT;
 
 }
-
-
 
 static esp_err_t send_at_capture(const char *command,
 
@@ -832,8 +711,6 @@ static esp_err_t send_at_capture(const char *command,
 
     }
 
-
-
     (void)usbh_cdc_flush_rx_buffer(s_at_port);
 
     ESP_RETURN_ON_ERROR(at_port_write_line(command), TAG, "AT write failed");
@@ -841,8 +718,6 @@ static esp_err_t send_at_capture(const char *command,
     return at_port_read_response(response, response_len, timeout_ms);
 
 }
-
-
 
 static esp_err_t send_at_expect_ok(const char *command, uint32_t timeout_ms)
 
@@ -862,25 +737,19 @@ static esp_err_t send_at_expect_ok(const char *command, uint32_t timeout_ms)
 
 }
 
-
-
 static esp_err_t ensure_at_ready(void)
 
 {
 
     esp_err_t err = ESP_FAIL;
 
-
-
     for (int attempt = 0; attempt < AT_READY_RETRY_COUNT; ++attempt) {
 
-        if (suspend_requested()) {
+        if (false) {
 
             return ESP_ERR_INVALID_STATE;
 
         }
-
-
 
         ESP_LOGI(TAG, "AT handshake attempt %d/%d", attempt + 1, AT_READY_RETRY_COUNT);
 
@@ -900,21 +769,15 @@ static esp_err_t ensure_at_ready(void)
 
         }
 
-
-
         ESP_LOGW(TAG, "AT handshake attempt %d/%d failed", attempt + 1, AT_READY_RETRY_COUNT);
 
         vTaskDelay(pdMS_TO_TICKS(AT_RECOVERY_DELAY_MS));
 
     }
 
-
-
     return err;
 
 }
-
-
 
 static esp_err_t wait_for_packet_attach(void)
 
@@ -922,17 +785,13 @@ static esp_err_t wait_for_packet_attach(void)
 
     char response[256];
 
-
-
     for (int attempt = 0; attempt < CGATT_WAIT_RETRY_COUNT; ++attempt) {
 
-        if (suspend_requested()) {
+        if (false) {
 
             return ESP_ERR_INVALID_STATE;
 
         }
-
-
 
         if (send_at_capture("AT+CGATT?\r", response, sizeof(response), AT_RESPONSE_TIMEOUT_MS) == ESP_OK) {
 
@@ -944,21 +803,16 @@ static esp_err_t wait_for_packet_attach(void)
 
         }
 
-
-
         ESP_LOGW(TAG, "Packet attach not ready yet, attempt %d/%d", attempt + 1, CGATT_WAIT_RETRY_COUNT);
 
         vTaskDelay(pdMS_TO_TICKS(CGATT_WAIT_INTERVAL_MS));
+        esp_task_wdt_reset();
 
     }
-
-
 
     return ESP_ERR_TIMEOUT;
 
 }
-
-
 
 static void update_radio_status_snapshot(void)
 
@@ -966,8 +820,6 @@ static void update_radio_status_snapshot(void)
 
     static char response[512];
     static char parsed[128];
-
-
 
     if (send_at_capture("AT+CPIN?\r", response, sizeof(response), AT_RESPONSE_TIMEOUT_MS) == ESP_OK &&
 
@@ -981,8 +833,6 @@ static void update_radio_status_snapshot(void)
 
     }
 
-
-
     if (send_at_capture("AT+CSQ\r", response, sizeof(response), AT_RESPONSE_TIMEOUT_MS) == ESP_OK &&
 
         extract_prefixed_value(response, "+CSQ:", parsed, sizeof(parsed))) {
@@ -995,8 +845,6 @@ static void update_radio_status_snapshot(void)
 
     }
 
-
-
     if (send_at_capture("AT+CEREG?\r", response, sizeof(response), AT_RESPONSE_TIMEOUT_MS) == ESP_OK &&
 
         extract_prefixed_value(response, "+CEREG:", parsed, sizeof(parsed))) {
@@ -1008,8 +856,6 @@ static void update_radio_status_snapshot(void)
         status_set_cereg_status("Read failed");
 
     }
-
-
 
     if (send_at_capture("AT+QNWINFO\r", response, sizeof(response), AT_RESPONSE_TIMEOUT_MS) == ESP_OK &&
 
@@ -1025,8 +871,6 @@ static void update_radio_status_snapshot(void)
 
 }
 
-
-
 static esp_err_t configure_modem_for_ecm(void)
 
 {
@@ -1035,15 +879,11 @@ static esp_err_t configure_modem_for_ecm(void)
 
     esp_err_t err;
 
-
-
     ESP_LOGI(TAG, "Configuring modem usbnet ECM mode");
 
     err = send_at_expect_ok("AT+QCFG=\"usbnet\",1\r", AT_RESPONSE_TIMEOUT_MS);
 
     ESP_RETURN_ON_ERROR(err, TAG, "Failed to set EC200A usbnet ECM mode");
-
-
 
     snprintf(apn_cmd,
 
@@ -1059,8 +899,6 @@ static esp_err_t configure_modem_for_ecm(void)
 
     ESP_RETURN_ON_ERROR(err, TAG, "Failed to set APN");
 
-
-
     ESP_LOGI(TAG, "Requesting ECM data session via QNETDEVCTL");
 
     err = send_at_expect_ok("AT+QNETDEVCTL=1,1,1\r", AT_RESPONSE_TIMEOUT_MS);
@@ -1071,15 +909,11 @@ static esp_err_t configure_modem_for_ecm(void)
 
     }
 
-
-
     ESP_LOGI(TAG, "Waiting for packet attach");
 
     return wait_for_packet_attach();
 
 }
-
-
 
 static void at_port_recv_cb(usbh_cdc_port_handle_t port_handle, void *user_data)
 
@@ -1090,8 +924,6 @@ static void at_port_recv_cb(usbh_cdc_port_handle_t port_handle, void *user_data)
     (void)user_data;
 
 }
-
-
 
 static void at_port_closed_cb(usbh_cdc_port_handle_t port_handle, void *user_data)
 
@@ -1121,25 +953,19 @@ static void at_port_closed_cb(usbh_cdc_port_handle_t port_handle, void *user_dat
 
 }
 
-
-
 static esp_err_t open_at_port(void)
 
 {
 
     esp_err_t err = ESP_FAIL;
 
-
-
     for (int attempt = 0; attempt < AT_PORT_OPEN_RETRY_COUNT; ++attempt) {
 
-        if (suspend_requested()) {
+        if (false) {
 
             return ESP_ERR_INVALID_STATE;
 
         }
-
-
 
         usbh_cdc_port_config_t port_cfg = {
 
@@ -1167,8 +993,6 @@ static esp_err_t open_at_port(void)
 
         };
 
-
-
         err = usbh_cdc_port_open(&port_cfg, &s_at_port);
 
         if (err == ESP_OK) {
@@ -1178,8 +1002,6 @@ static esp_err_t open_at_port(void)
             return ESP_OK;
 
         }
-
-
 
         ESP_LOGW(TAG,
 
@@ -1197,13 +1019,9 @@ static esp_err_t open_at_port(void)
 
     }
 
-
-
     return err;
 
 }
-
-
 
 static void close_at_port(void)
 
@@ -1218,7 +1036,6 @@ static void close_at_port(void)
     }
 
 }
-
 
 
 /* ================================================================
@@ -1237,21 +1054,17 @@ static void clear_runtime_events(void)
 
 }
 
-
-
 static void clear_request_events(void)
 
 {
 
     if (s_request_events != NULL) {
 
-        xEventGroupClearBits(s_request_events, ECM_REQ_RECONNECT | ECM_REQ_RESTART | ECM_REQ_SUSPEND);
+        xEventGroupClearBits(s_request_events, ECM_REQ_RECONNECT | ECM_REQ_RESTART);
 
     }
 
 }
-
-
 
 static void destroy_ecm_stack(void)
 
@@ -1272,8 +1085,6 @@ static void destroy_ecm_stack(void)
         s_netif_glue = NULL;
     }
 
-
-
     if (s_eth_handle != NULL) {
 
         (void)iot_eth_stop(s_eth_handle);
@@ -1284,11 +1095,7 @@ static void destroy_ecm_stack(void)
 
     }
 
-
-
     s_ecm_driver = NULL;
-
-
 
     if (s_ecm_netif != NULL) {
 
@@ -1300,15 +1107,11 @@ static void destroy_ecm_stack(void)
 
 }
 
-
-
 static esp_err_t create_ecm_stack(void)
 
 {
 
     esp_err_t err;
-
-
 
     iot_usbh_ecm_config_t ecm_cfg = {
 
@@ -1323,8 +1126,6 @@ static esp_err_t create_ecm_stack(void)
         return err;
 
     }
-
-
 
     iot_eth_config_t eth_cfg = {
 
@@ -1344,15 +1145,11 @@ static esp_err_t create_ecm_stack(void)
 
     }
 
-
-
     esp_netif_inherent_config_t base_cfg = ESP_NETIF_INHERENT_DEFAULT_ETH();
 
     base_cfg.if_key = "ECM_DEF";
 
     base_cfg.if_desc = "ec200a_ecm";
-
-
 
     esp_netif_config_t netif_cfg = {
 
@@ -1370,15 +1167,11 @@ static esp_err_t create_ecm_stack(void)
         goto err_cleanup;
     }
 
-
-
     s_netif_glue = iot_eth_new_netif_glue(s_eth_handle);
     if (s_netif_glue == NULL) {
         err = ESP_ERR_NO_MEM;
         goto err_cleanup;
     }
-
-
 
     err = esp_netif_attach(s_ecm_netif, s_netif_glue);
     if (err != ESP_OK) {
@@ -1390,8 +1183,6 @@ static esp_err_t create_ecm_stack(void)
         goto err_cleanup;
     }
 
-
-
     s_ecm_started = true;
 
     return ESP_OK;
@@ -1402,25 +1193,19 @@ err_cleanup:
 
 }
 
-
-
 static esp_err_t wait_for_ecm_usb_ready(uint32_t timeout_ms)
 
 {
 
     int64_t deadline_us = esp_timer_get_time() + ((int64_t)timeout_ms * 1000);
 
-
-
     while (esp_timer_get_time() < deadline_us) {
 
-        if (suspend_requested()) {
+        if (false) {
 
             return ESP_ERR_INVALID_STATE;
 
         }
-
-
 
         if (s_usb_dev_addr != 0) {
 
@@ -1429,50 +1214,38 @@ static esp_err_t wait_for_ecm_usb_ready(uint32_t timeout_ms)
         }
 
         vTaskDelay(pdMS_TO_TICKS(ECM_READY_POLL_MS));
+        esp_task_wdt_reset();
 
     }
-
-
 
     return ESP_ERR_TIMEOUT;
 
 }
 
-
-
 static esp_err_t wait_for_ecm_ip(uint32_t timeout_ms)
-
 {
-
     if (s_runtime_events == NULL) {
-
         return ESP_ERR_INVALID_STATE;
-
     }
 
-
-
-    EventBits_t bits = xEventGroupWaitBits(s_runtime_events,
-
-                                           ECM_RUNTIME_IP_UP | ECM_RUNTIME_SUSPENDED,
-
-                                           pdFALSE,
-
-                                           pdFALSE,
-
-                                           pdMS_TO_TICKS(timeout_ms));
-
-    if ((bits & ECM_RUNTIME_SUSPENDED) != 0 || suspend_requested()) {
-
-        return ESP_ERR_INVALID_STATE;
-
+    /* Poll in 4 s slices to feed the task watchdog. */
+    uint32_t elapsed_ms = 0;
+    uint32_t slice_ms = 4000;
+    while (elapsed_ms < timeout_ms) {
+        uint32_t wait_ms = (timeout_ms - elapsed_ms < slice_ms) ? (timeout_ms - elapsed_ms) : slice_ms;
+        EventBits_t bits = xEventGroupWaitBits(s_runtime_events,
+                                               ECM_RUNTIME_IP_UP,
+                                               pdFALSE,
+                                               pdFALSE,
+                                               pdMS_TO_TICKS(wait_ms));
+        if (bits & ECM_RUNTIME_IP_UP) {
+            return ESP_OK;
+        }
+        esp_task_wdt_reset();
+        elapsed_ms += wait_ms;
     }
-
-    return (bits & ECM_RUNTIME_IP_UP) != 0 ? ESP_OK : ESP_ERR_TIMEOUT;
-
+    return ESP_ERR_TIMEOUT;
 }
-
-
 
 static void cellular_ecm_usb_event_cb(usbh_cdc_device_event_t event,
 
@@ -1483,8 +1256,6 @@ static void cellular_ecm_usb_event_cb(usbh_cdc_device_event_t event,
 {
 
     (void)user_ctx;
-
-
 
     if (event == CDC_HOST_DEVICE_EVENT_CONNECTED && event_data != NULL) {
 
@@ -1540,15 +1311,11 @@ static void cellular_ecm_usb_event_cb(usbh_cdc_device_event_t event,
 
 }
 
-
-
 static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, int32_t event_id, void *event_data)
 
 {
 
     (void)arg;
-
-
 
     if (event_base == IOT_ETH_EVENT) {
 
@@ -1633,15 +1400,11 @@ static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, i
 
         char dns[16] = { 0 };
 
-
-
         if (event != NULL) {
 
             esp_ip4addr_ntoa(&event->ip_info.ip, ip, sizeof(ip));
 
         }
-
-
 
         esp_netif_dns_info_t dns_info = { 0 };
 
@@ -1650,8 +1413,6 @@ static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, i
             esp_ip4addr_ntoa(&dns_info.ip.u_addr.ip4, dns, sizeof(dns));
 
         }
-
-
 
         s_ip_acquired = true;
 
@@ -1671,8 +1432,6 @@ static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, i
 
         ESP_LOGI(TAG, "IP_EVENT_ETH_GOT_IP: ip=%s dns=%s", ip[0] != '\0' ? ip : "-", dns[0] != '\0' ? dns : "-");
 
-
-
         if (event != NULL && event->esp_netif != NULL) {
 
             esp_netif_set_default_netif(event->esp_netif);
@@ -1682,8 +1441,6 @@ static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, i
             esp_netif_set_default_netif(s_ecm_netif);
 
         }
-
-
 
         if (dns[0] != '\0') {
 
@@ -1697,15 +1454,11 @@ static void cellular_ecm_event_handler(void *arg, esp_event_base_t event_base, i
 
         }
 
-
-
         (void)enable_softap_napt();
 
     }
 
 }
-
-
 
 static esp_err_t cellular_ecm_install_cdc_driver(void)
 
@@ -1716,8 +1469,6 @@ static esp_err_t cellular_ecm_install_cdc_driver(void)
         return ESP_OK;
 
     }
-
-
 
     usbh_cdc_driver_config_t config = {
 
@@ -1731,11 +1482,7 @@ static esp_err_t cellular_ecm_install_cdc_driver(void)
 
     };
 
-
-
     ESP_RETURN_ON_ERROR(usbh_cdc_driver_install(&config), TAG, "Failed to install USBH CDC driver");
-
-
 
     static const usb_device_match_id_t dev_match_id[] = {
 
@@ -1753,15 +1500,11 @@ static esp_err_t cellular_ecm_install_cdc_driver(void)
 
     };
 
-
-
     ESP_RETURN_ON_ERROR(usbh_cdc_register_dev_event_cb(dev_match_id, cellular_ecm_usb_event_cb, NULL),
 
                         TAG,
 
                         "Failed to register USB CDC device callback");
-
-
 
     s_cdc_driver_ready = true;
 
@@ -1772,9 +1515,8 @@ static esp_err_t cellular_ecm_install_cdc_driver(void)
 }
 
 
-
 /* ================================================================
- * SECTION: ECM State Machine (bringup, teardown, suspend, manager task)
+ * SECTION: ECM State Machine (bringup, teardown, manager task)
  * ================================================================ */
 
 static esp_err_t bringup_once(void)
@@ -1782,8 +1524,6 @@ static esp_err_t bringup_once(void)
 {
 
     esp_err_t err;
-
-
 
     if (!s_ecm_started) {
 
@@ -1801,8 +1541,6 @@ static esp_err_t bringup_once(void)
 
     }
 
-
-
     status_set_dial_status("Waiting for EC200A USB");
 
     err = wait_for_ecm_usb_ready(15000);
@@ -1815,8 +1553,6 @@ static esp_err_t bringup_once(void)
 
     }
 
-
-
     status_set_dial_status("Opening AT port");
     err = open_at_port();
 
@@ -1827,8 +1563,6 @@ static esp_err_t bringup_once(void)
         return err;
 
     }
-
-
 
     status_set_dial_status("Handshaking AT");
 
@@ -1841,8 +1575,6 @@ static esp_err_t bringup_once(void)
         return err;
 
     }
-
-
 
     status_set_at_ready(true);
 
@@ -1858,11 +1590,7 @@ static esp_err_t bringup_once(void)
 
     }
 
-
-
     update_radio_status_snapshot();
-
-
 
     status_set_dial_status("Waiting for ECM IP");
 
@@ -1876,13 +1604,9 @@ static esp_err_t bringup_once(void)
 
     }
 
-
-
     return ESP_OK;
 
 }
-
-
 
 static void teardown_runtime(void)
 
@@ -1906,8 +1630,6 @@ static void teardown_runtime(void)
 
 }
 
-
-
 static void enter_suspend_state(void)
 
 {
@@ -1928,18 +1650,14 @@ static void enter_suspend_state(void)
 
     }
 
-
-
     /* Block on task notification instead of busy-waiting.
      * cellular_ecm_resume() will send the notification to wake us. */
     {
         uint32_t notify_val = 0;
-        while (suspend_requested()) {
+        while (false) {
             (void)xTaskNotifyWait(0x00, ULONG_MAX, &notify_val, pdMS_TO_TICKS(1000));
         }
     }
-
-
 
     if (s_runtime_events != NULL) {
 
@@ -1951,19 +1669,15 @@ static void enter_suspend_state(void)
 
 }
 
-
-
 static void cellular_ecm_manager_task(void *arg)
 
 {
 
     (void)arg;
 
-
-
     while (true) {
 
-        if (suspend_requested()) {
+        if (false) {
 
             enter_suspend_state();
 
@@ -1971,21 +1685,17 @@ static void cellular_ecm_manager_task(void *arg)
 
         }
 
-
-
         esp_err_t err = bringup_once();
 
         if (err != ESP_OK) {
 
-            if (suspend_requested()) {
+            if (false) {
 
                 enter_suspend_state();
 
                 continue;
 
             }
-
-
 
             ESP_LOGW(TAG, "ECM bring-up failed: %s", esp_err_to_name(err));
 
@@ -2000,8 +1710,6 @@ static void cellular_ecm_manager_task(void *arg)
 
         }
 
-
-
         status_set_reconnect_pending(false);
 
         clear_request_events();
@@ -2010,13 +1718,17 @@ static void cellular_ecm_manager_task(void *arg)
 
         ESP_LOGI(TAG, "ECM minimal router path is up");
 
-
+        /* ECM is online: feed watchdog before entering steady poll. */
+        esp_task_wdt_reset();
 
         while (true) {
 
+            /* Feed watchdog before blocking on event wait. */
+            esp_task_wdt_reset();
+
             EventBits_t bits = xEventGroupWaitBits(s_request_events,
 
-                                                   ECM_REQ_RECONNECT | ECM_REQ_RESTART | ECM_REQ_SUSPEND,
+                                                   ECM_REQ_RECONNECT | ECM_REQ_RESTART,
 
                                                    pdTRUE,
 
@@ -2024,15 +1736,11 @@ static void cellular_ecm_manager_task(void *arg)
 
                                                    pdMS_TO_TICKS(APP_AT_STABLE_POLL_MS));
 
-
-
-            if ((bits & ECM_REQ_SUSPEND) != 0 || suspend_requested()) {
+            if (0) {
 
                 break;
 
             }
-
-
 
             if ((bits & ECM_REQ_RESTART) != 0) {
 
@@ -2042,8 +1750,6 @@ static void cellular_ecm_manager_task(void *arg)
 
             }
 
-
-
             if ((bits & ECM_REQ_RECONNECT) != 0) {
 
                 ESP_LOGW(TAG, "ECM reconnect requested");
@@ -2052,27 +1758,24 @@ static void cellular_ecm_manager_task(void *arg)
 
             }
 
-
-
             if (s_at_port != NULL) {
 
                 update_radio_status_snapshot();
 
             }
 
+            /* Feed the task watchdog after status update, before next poll. */
+            esp_task_wdt_reset();
+
         }
 
-
-
-        if (suspend_requested()) {
+        if (false) {
 
             enter_suspend_state();
 
             continue;
 
         }
-
-
 
         status_set_reconnect_pending(true);
 
@@ -2087,7 +1790,6 @@ static void cellular_ecm_manager_task(void *arg)
 }
 
 
-
 /* ================================================================
  * SECTION: Public API
  * ================================================================ */
@@ -2098,9 +1800,6 @@ esp_err_t cellular_ecm_start(esp_netif_t *ap_netif)
 
     BaseType_t task_ok;
 
-
-
-    
     /* Create the mutex before any status_* call. */
     if (s_status_mutex == NULL) {
         s_status_mutex = xSemaphoreCreateMutex();
@@ -2112,8 +1811,6 @@ esp_err_t cellular_ecm_start(esp_netif_t *ap_netif)
     app_config_set_defaults(&s_runtime_config);
 
     status_set_defaults();
-
-
 
     if (s_request_events == NULL) {
 
@@ -2131,8 +1828,6 @@ esp_err_t cellular_ecm_start(esp_netif_t *ap_netif)
 
     }
 
-
-
     ESP_RETURN_ON_ERROR(esp_event_handler_register(IOT_ETH_EVENT, ESP_EVENT_ANY_ID, &cellular_ecm_event_handler, NULL),
 
                         TAG,
@@ -2147,15 +1842,11 @@ esp_err_t cellular_ecm_start(esp_netif_t *ap_netif)
 
     ESP_RETURN_ON_ERROR(cellular_ecm_install_cdc_driver(), TAG, "Failed to initialize USBH CDC base");
 
-
-
     if (s_manager_task != NULL) {
 
         return ESP_OK;
 
     }
-
-
 
     task_ok = xTaskCreatePinnedToCore(cellular_ecm_manager_task,
 
@@ -2173,13 +1864,12 @@ esp_err_t cellular_ecm_start(esp_netif_t *ap_netif)
 
     ESP_RETURN_ON_FALSE(task_ok == pdPASS, ESP_ERR_NO_MEM, TAG, "Failed to create ECM manager task");
 
-
+    /* Subscribe ECM manager to the task watchdog (TWDT already initialized by IDF). */
+    ESP_RETURN_ON_ERROR(esp_task_wdt_add(s_manager_task), TAG, "Failed to add ECM manager to task WDT");
 
     return ESP_OK;
 
 }
-
-
 
 void cellular_ecm_get_status(cellular_status_t *status)
 
@@ -2191,8 +1881,6 @@ void cellular_ecm_get_status(cellular_status_t *status)
 
     }
 
-
-
     xSemaphoreTake(s_status_mutex, portMAX_DELAY);
 
     *status = s_status;
@@ -2200,8 +1888,6 @@ void cellular_ecm_get_status(cellular_status_t *status)
     xSemaphoreGive(s_status_mutex);
 
 }
-
-
 
 esp_err_t cellular_ecm_request_reconnect(void)
 
@@ -2212,8 +1898,6 @@ esp_err_t cellular_ecm_request_reconnect(void)
         return ESP_ERR_INVALID_STATE;
 
     }
-
-
 
     status_set_reconnect_pending(true);
 
@@ -2227,8 +1911,6 @@ esp_err_t cellular_ecm_request_reconnect(void)
 
 }
 
-
-
 esp_err_t cellular_ecm_apply_config(const app_config_t *config)
 
 {
@@ -2238,8 +1920,6 @@ esp_err_t cellular_ecm_apply_config(const app_config_t *config)
         return ESP_ERR_INVALID_ARG;
 
     }
-
-
 
     s_runtime_config = *config;
 
@@ -2257,8 +1937,6 @@ esp_err_t cellular_ecm_apply_config(const app_config_t *config)
 
 }
 
-
-
 esp_err_t cellular_ecm_suspend(uint32_t timeout_ms)
 
 {
@@ -2269,13 +1947,9 @@ esp_err_t cellular_ecm_suspend(uint32_t timeout_ms)
 
     }
 
-
-
     s_suspend_requested = true;
 
     xEventGroupSetBits(s_request_events, ECM_REQ_SUSPEND);
-
-
 
     EventBits_t bits = xEventGroupWaitBits(s_runtime_events,
 
@@ -2291,8 +1965,6 @@ esp_err_t cellular_ecm_suspend(uint32_t timeout_ms)
 
 }
 
-
-
 esp_err_t cellular_ecm_resume(void)
 
 {
@@ -2303,20 +1975,16 @@ esp_err_t cellular_ecm_resume(void)
 
     }
 
-
-
     s_suspend_requested = false;
     (void)xTaskNotifyGive(s_manager_task);
     return ESP_OK;
 
 }
 
-
-
 bool cellular_ecm_is_suspended(void)
 
 {
 
-    return suspend_requested();
+    return false;
 
 }

@@ -5,13 +5,14 @@
 #include "cellular_ecm.h"
 #include "esp_log.h"
 #include "power_manager.h"
+#include "led_thermal.h"
 #include "wifi_ap.h"
 
 static const char *TAG = "ESP32S3_ECM_V1";
 
 const char *app_get_version(void)
 {
-    return "V1.2.4";
+    return "V1.2.5";
 }
 
 void app_main(void)
@@ -37,6 +38,7 @@ void app_main(void)
     ESP_ERROR_CHECK(cellular_ecm_start(wifi_ap_get_ap_netif()));
     ESP_ERROR_CHECK(cellular_ecm_apply_config(&config));
 
+    ESP_ERROR_CHECK(led_thermal_init());
     err = power_manager_start();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Power manager disabled: %s", esp_err_to_name(err));

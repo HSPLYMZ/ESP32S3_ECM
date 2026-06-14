@@ -72,13 +72,6 @@ void app_state_set_runtime_channel(uint8_t runtime_channel)
     app_state_unlock();
 }
 
-void app_state_set_power_sleeping(bool sleeping)
-{
-    app_state_lock();
-    s_state.power_sleeping = sleeping;
-    app_state_unlock();
-}
-
 void app_state_set_thermal_protect_active(bool active)
 {
     app_state_lock();
@@ -91,26 +84,6 @@ void app_state_set_internal_temp_celsius(float internal_temp_celsius)
     app_state_lock();
     s_state.internal_temp_celsius = internal_temp_celsius;
     app_state_unlock();
-}
-
-bool app_state_is_softap_started(void)
-{
-    bool result;
-
-    app_state_lock();
-    result = s_state.softap_started;
-    app_state_unlock();
-    return result;
-}
-
-uint8_t app_state_get_sta_count(void)
-{
-    uint8_t result;
-
-    app_state_lock();
-    result = s_state.connected_sta_count;
-    app_state_unlock();
-    return result;
 }
 
 void app_state_get_snapshot(app_state_snapshot_t *snapshot)
