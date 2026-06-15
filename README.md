@@ -1,4 +1,4 @@
-# ESP32S3_ECM_V1 (V1.2.4)
+# ESP32S3_ECM
 
 基于 ESP32-S3 + EC200A-CN 的 4G 转 Wi-Fi 最小路由器，使用 ECM 上行、SoftAP 下发和 NAPT 转发。
 
