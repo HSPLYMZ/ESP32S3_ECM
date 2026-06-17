@@ -5,13 +5,12 @@
 ## 项目信息
 
 - 固件版本：V1.3.0
-- GitHub 仓库：https://github.com/HSPLYMZ/ESP32S3_ECM
 - 目标芯片：ESP32-S3
 - 存储配置：16 MB Flash + 8 MB PSRAM
 - 4G 模组：Quectel EC200A-CN
 - 工作模式：ECM + SoftAP + NAPT
 - 默认热点：`EC200A`
-- 常用串口：`COM25`
+
 
 ## V1.3.0 更新内容
 
