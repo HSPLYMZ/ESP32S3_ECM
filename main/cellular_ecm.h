@@ -18,15 +18,19 @@ typedef struct {
     bool uplink_connected;
     bool napt_enabled;
     bool reconnect_pending;
+    uint32_t reconnect_count;
+    uint32_t failure_count;
     char uplink_ip[16];
     char dns[16];
     char dial_status[48];
     char sim_status[32];
     char signal_csq[32];
     char cereg_status[64];
+    char cgatt_status[32];
     char network_info[96];
     char module_model[32];
     char last_error[96];
+    char last_failure[96];
     cellular_uplink_mode_t uplink_mode;
 } cellular_status_t;
 

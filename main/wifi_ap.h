@@ -12,5 +12,4 @@ esp_err_t wifi_ap_init(void);
 esp_netif_t *wifi_ap_get_ap_netif(void);
 esp_err_t wifi_ap_apply_config(const app_config_t *config);
 esp_err_t wifi_ap_set_dns_server(const esp_ip4_addr_t *dns_addr);
-esp_err_t wifi_ap_suspend(void);
-esp_err_t wifi_ap_resume(const app_config_t *config);
+esp_err_t wifi_ap_set_backup_dns_server(const esp_ip4_addr_t *dns_addr);
